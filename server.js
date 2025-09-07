@@ -7,7 +7,7 @@ require("dotenv").config();
 const app = express();
 
 if (process.env.NODE_ENV !== "production") {
-  app.use(cors({ origin: [/^http:\/\/localhost:\d+$/, /^http:\/\/127\.0\.0\.1:\d+$/] }));
+    app.use(cors({ origin: [/^http:\/\/localhost:\d+$/, /^http:\/\/127\.0\.0\.1:\d+$/] }));
 }
 
 app.use(express.json());
@@ -15,13 +15,13 @@ app.use(express.static(path.join(__dirname, "public")));
 
 // DB connection
 const pool = process.env.DATABASE_URL
-  ? new Pool({ connectionString: process.env.DATABASE_URL, ssl: process.env.DATABASE_URL.includes("neon.tech") ? { rejectUnauthorized: false } : false })
-  : new Pool({
-      host: process.env.PGHOST || "127.0.0.1",
-      port: Number(process.env.PGPORT || 5433),
-      database: process.env.PGDATABASE || "servicesdb",
-      user: process.env.PGUSER || "postgres",
-      password: process.env.PGPASSWORD || "",
+    ? new Pool({ connectionString: process.env.DATABASE_URL, ssl: process.env.DATABASE_URL.includes("neon.tech") ? { rejectUnauthorized: false } : false })
+    : new Pool({
+        host: process.env.PGHOST || "127.0.0.1",
+        port: Number(process.env.PGPORT || 5433),
+        database: process.env.PGDATABASE || "servicesdb",
+        user: process.env.PGUSER || "postgres",
+        password: process.env.PGPASSWORD || "",
     });
 
 // small helper to avoid try/catch soup
@@ -29,18 +29,24 @@ const asyncHandler = (fn) => (req, res, next) => Promise.resolve(fn(req, res, ne
 
 // health check (good for render/railway)
 app.get("/healthz", asyncHandler(async (req, res) => {
-  const { rows } = await pool.query("SELECT 1 as ok");
-  res.json({ ok: rows[0].ok === 1 });
+    const { rows } = await pool.query("SELECT 1 as ok");
+    res.json({ ok: rows[0].ok === 1 });
+}));
+
+app.get("/api/categories", asyncHandler(async (req, res) => {
+    const { rows } = await pool.query("SELECT name FROM categories ORDER BY name ASC");
+    res.json(rows.map(r => r.name));
 }));
 
 // list all businesses (add pagination soon)
 app.get("/api/businesses", asyncHandler(async (req, res) => {
-  const { rows } = await pool.query(`
+    const { rows } = await pool.query(`
     SELECT
       b.id, b.name, b.description,
       b.phone, b.email, b.website,
       b.street, b.suburb, b.city, b.postcode, b.region,
       b.logo_url,
+      b.latitude, b.longitude,
       COALESCE(
         json_agg(c.name) FILTER (WHERE c.name IS NOT NULL),
         '[]'
@@ -52,34 +58,34 @@ app.get("/api/businesses", asyncHandler(async (req, res) => {
     ORDER BY b.name ASC
     LIMIT 200
   `);
-  res.json(rows);
+    res.json(rows);
 }));
 
 app.get("/api/search", asyncHandler(async (req, res) => {
-  const q = String(req.query.q || "").trim();
-  const category = String(req.query.category || "").trim();
+    const q = String(req.query.q || "").trim();
+    const category = String(req.query.category || "").trim();
 
-  const params = [];
-  const where = [];
+    const params = [];
+    const where = [];
 
-  // free-text q → ILIKE across a few columns
-  if (q) {
-    params.push(`%${q}%`);
-    const p = `$${params.length}`;
-    // stick to columns you actually have & have indexes for
-    where.push(`(
+    // free-text q → ILIKE across a few columns
+    if (q) {
+        params.push(`%${q}%`);
+        const p = `$${params.length}`;
+        // stick to columns you actually have & have indexes for
+        where.push(`(
       b.name ILIKE ${p} OR
       b.suburb ILIKE ${p} OR
       b.postcode ILIKE ${p} OR
       b.description ILIKE ${p} OR
       b.city ILIKE ${p}
     )`);
-  }
+    }
 
-  // optional category filter by name
-  if (category) {
-    params.push(category);
-    where.push(`
+    // optional category filter by name
+    if (category) {
+        params.push(category);
+        where.push(`
       EXISTS (
         SELECT 1
         FROM business_categories bc
@@ -88,30 +94,36 @@ app.get("/api/search", asyncHandler(async (req, res) => {
           AND c.name = $${params.length}
       )
     `);
-  }
+    }
 
-  const clause = where.length ? `WHERE ${where.join(" AND ")}` : "";
+    const clause = where.length ? `WHERE ${where.join(" AND ")}` : "";
 
-  const sql = `
+    const sql = `
     SELECT
       b.id, b.name,
       b.suburb, b.city, b.postcode, b.region,
-      b.logo_url
+      b.logo_url,
+      b.latitude, b.longitude
     FROM businesses b
     ${clause}
     ORDER BY b.name ASC
     LIMIT 200
   `;
 
-  const { rows } = await pool.query(sql, params);
-  res.json(rows);
+    const { rows } = await pool.query(sql, params);
+    res.json(rows);
 }));
 
 //Central error middleware
 app.use((err, req, res, next) => {
-  console.error("Unhandled error:", err);
-  res.status(500).json({ error: "Internal server error" });
+    if (process.env.NODE_ENV !== "production") {
+        console.error("Unhandled error:", err);
+    } else {
+        console.error("Unhandled error:", err.message, err.stack);
+    }
+    res.status(500).json({ error: "Internal server error" });
 });
 
-const PORT = 4000;
+
+const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));

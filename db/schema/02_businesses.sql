@@ -15,6 +15,9 @@ CREATE TABLE IF NOT EXISTS businesses (
   postcode     TEXT,     -- keep as TEXT to preserve leading zeros
   region       TEXT,
 
+  -- geo (for map; nullable until you geocode)
+  latitude     DOUBLE PRECISION,
+  longitude    DOUBLE PRECISION,
 
   -- media
   logo_url     TEXT,
@@ -24,7 +27,7 @@ CREATE TABLE IF NOT EXISTS businesses (
   updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
   CONSTRAINT email_format_chk
-    CHECK (email IS NULL OR email ~* '^[^@\s]+@[^@\s]+\.[^@\s]+$'),
+    CHECK (email IS NULL OR email ~* '^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$'),
   CONSTRAINT website_format_chk
     CHECK (website IS NULL OR website ~* '^https?://')
 );
