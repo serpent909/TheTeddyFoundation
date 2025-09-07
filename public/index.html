@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Service Directory</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; padding: 0; }
+    header { background: #3f51b5; color: white; padding: 1rem; }
+    #controls { padding: 1rem; background: #f9f9f9; }
+    #map { height: 400px; }
+    #results { padding: 1rem; }
+    .business {
+      border: 1px solid #ccc;
+      padding: .5rem;
+      margin-bottom: .5rem;
+      border-radius: 5px;
+    }
+    .business h3 { margin: 0; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Service Directory</h1>
+  </header>
+
+  <div id="controls">
+    <input id="search" placeholder="Search services..." />
+    <select id="category">
+      <option value="">All Categories</option>
+      <!-- categories can be loaded dynamically later -->
+    </select>
+    <button onclick="searchServices()">Search</button>
+  </div>
+
+  <div id="map"></div>
+  <div id="results"></div>
+
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script>
+    const API_BASE = "http://localhost:4000/api";
+    const map = L.map('map').setView([-36.85, 174.76], 12); // Example center (Auckland)
+
+    // Map tiles
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+
+    let markersLayer = L.layerGroup().addTo(map);
+
+    async function loadAllServices() {
+      const res = await fetch(`${API_BASE}/services`);
+      const data = await res.json();
+      renderResults(data);
+    }
+
+    async function searchServices() {
+      const q = document.getElementById("search").value;
+      const category = document.getElementById("category").value;
+      const params = new URLSearchParams();
+      if (q) params.append("q", q);
+      if (category) params.append("category", category);
+
+      const res = await fetch(`${API_BASE}/search?${params.toString()}`);
+      const data = await res.json();
+      renderResults(data);
+    }
+
+    function renderResults(data) {
+      // clear map markers and results
+      markersLayer.clearLayers();
+      const resultsDiv = document.getElementById("results");
+      resultsDiv.innerHTML = "";
+
+      if (!data.length) {
+        resultsDiv.innerHTML = "<p>No results found.</p>";
+        return;
+      }
+
+      data.forEach(biz => {
+        // Add to list
+        const div = document.createElement("div");
+        div.className = "business";
+        div.innerHTML = `
+          <h3>${biz.name}</h3>
+          <p>${biz.description || ""}</p>
+          <p>${biz.suburb || ""} ${biz.postcode || ""}</p>
+          <p>${biz.phone || ""}</p>
+          <a href="${biz.website || "#"}" target="_blank">${biz.website || ""}</a>
+        `;
+        resultsDiv.appendChild(div);
+
+        // Add to map (only if lat/lng exist)
+        if (biz.latitude && biz.longitude) {
+          L.marker([biz.latitude, biz.longitude])
+            .addTo(markersLayer)
+            .bindPopup(`<b>${biz.name}</b><br>${biz.suburb || ""}`);
+        }
+      });
+
+      // Fit map to markers if any have coords
+      const coords = data.filter(b => b.latitude && b.longitude).map(b => [b.latitude, b.longitude]);
+      if (coords.length) map.fitBounds(coords);
+    }
+
+    // load everything when page opens
+    loadAllServices();
+  </script>
+</body>
+</html>
